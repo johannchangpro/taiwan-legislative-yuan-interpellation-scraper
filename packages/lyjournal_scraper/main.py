@@ -25,38 +25,40 @@ def config(args: argparse.Namespace) -> int:
     return 0
 
 
-def output_search_results(results: list[dict[str, str]], keyword: str, format: OutputFormat = None) -> None:
+def output_search_results(results: dict[str, list[dict[str, str]]], keyword: str, format: OutputFormat = None) -> None:
     if format is None:
         format = OutputFormat.CSV
 
     if format is OutputFormat.CSV:
-        fields: list[str] = list()
-        field_set: set[str] = set()
+        res_type: str
+        for res_type in results:
+            fields: list[str] = list()
+            field_set: set[str] = set()
 
-        result: dict[str, str]
-        for result in results:
-            k: str
-            for k in result:
-                if k in field_set:
-                    continue
-                fields.append(k)
-                field_set.add(k)
+            result: dict[str, str]
+            for result in results[res_type]:
+                k: str
+                for k in result:
+                    if k in field_set:
+                        continue
+                    fields.append(k)
+                    field_set.add(k)
 
-        c: str
-        file: pathlib.Path = pathlib.Path(
-            f"{''.join(c if c.isalpha() or c.isdigit() else '-' for c in keyword).strip()}.csv")
-        while file.exists():
-            file = pathlib.Path(f"{file.stem}-new{file.suffix}")
-        f: IO
-        with open(file, 'w', encoding="utf-8-sig", newline='\n') as f:
-            writer: csv.DictWriter = csv.DictWriter(f, fieldnames=fields)
-            writer.writeheader()
-            writer.writerows(results)
+            c: str
+            file: pathlib.Path = pathlib.Path(
+                f"{''.join(c if c.isalpha() or c.isdigit() else '-' for c in keyword).strip()}-{res_type}.csv")
+            while file.exists():
+                file = pathlib.Path(f"{file.stem}-new{file.suffix}")
+            f: IO
+            with open(file, 'w', encoding="utf-8-sig", newline='\n') as f:
+                writer: csv.DictWriter = csv.DictWriter(f, fieldnames=fields)
+                writer.writeheader()
+                writer.writerows(results[res_type])
 
 
 def scrape(args: argparse.Namespace) -> int:
     simple_lyjournal: SimpleLYJournal = SimpleLYJournal(get_config())
-    results: list[dict[str, str]] = simple_lyjournal.search(args.keyword)
+    results: dict[str, list[dict[str, str]]] = simple_lyjournal.search(args.keyword)
     simple_lyjournal.quit()
     get_logger().debug(results)
     output_search_results(results, args.keyword)

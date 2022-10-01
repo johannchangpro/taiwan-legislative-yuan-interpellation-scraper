@@ -107,6 +107,13 @@ class ElementFinder:
         except NoSuchElementException:
             return
 
+    @classmethod
+    def find_tab_link(cls, element: WebDriver | WebElement, tab_type: str) -> Optional[WebElement]:
+        try:
+            return element.find_element(By.XPATH, f'//td[@class="tab_m06"]/a[text()="{tab_type}"]')
+        except NoSuchElementException:
+            return
+
 
 class SimpleLYJournal:
     HOME_PAGE: str = "https://lis.ly.gov.tw/qrkmc/qrkmout"
@@ -139,12 +146,12 @@ class SimpleLYJournal:
             self.cache_path.mkdir()
 
     def get_metas_from_search_result_link(self, link: str) -> dict[str, str]:
-        meta: dict[str, str] = dict()
         e: Optional[Union[ElementClickInterceptedException, TimeoutException]] = None
         search_window: str = self.browser_driver.current_window_handle
 
         i: int
         for i in range(100):
+            time.sleep(1)
             try:
                 self.browser_driver.execute_script('window.open()')
                 d: webdriver.Edge | webdriver.Firefox
@@ -161,7 +168,6 @@ class SimpleLYJournal:
                         self.browser_driver.window_handles[len(self.browser_driver.window_handles) - 1])
                     self.browser_driver.close()
                 self.browser_driver.switch_to.window(search_window)
-                time.sleep(1)
                 continue
             else:
                 break
@@ -184,8 +190,8 @@ class SimpleLYJournal:
         self.browser_driver.switch_to.window(search_window)
         return meta
 
-    def search(self, keyword: str) -> list[dict[str, str]]:
-        results: list[dict[str, str]] = list()
+    def search(self, keyword: str) -> dict[str, list[dict[str, str]]]:
+        results: dict[str, list[dict[str, str]]] = dict()
         e: Optional[TimeoutException] = None
 
         i: int
@@ -217,30 +223,40 @@ class SimpleLYJournal:
         if not ElementFinder.find_search_result_links(self.browser_driver):
             return results
 
-        while True:
-            link: str
-            element: WebElement
-            for link in [element.get_attribute('href')
-                         for element in ElementFinder.find_search_result_links(self.browser_driver)]:
-                results.append(self.get_metas_from_search_result_link(link))
+        tab_type: str
+        for tab_type in ['總質詢', '預決算質(諮)詢', '專案質詢', '委員會質詢', '其他質詢']:
+            tab_link: WebElement = ElementFinder.find_tab_link(self.browser_driver, tab_type)
+            if not tab_link:
+                continue
+            tab_link.click()
 
-            if not ElementFinder.find_next_page_button(self.browser_driver):
-                break
+            sub_results: list[dict[str, str]] = list()
+            while True:
+                link: str
+                element: WebElement
+                for link in [element.get_attribute('href')
+                             for element in ElementFinder.find_search_result_links(self.browser_driver)]:
+                    sub_results.append(self.get_metas_from_search_result_link(link))
 
-            for i in range(100):
-                try:
-                    ElementFinder.find_next_page_button(self.browser_driver).click()
-                    WebDriverWait(self.browser_driver, 10).until(
-                        lambda d: ElementFinder.find_search_result_analysis_image(d))
-                except TimeoutException as e:
-                    get_logger().info(f"retry: {i+1}")
-                    time.sleep(1)
-                    continue
-                else:
+                if not ElementFinder.find_next_page_button(self.browser_driver):
                     break
-            else:
-                if e:
-                    raise e
+
+                for i in range(100):
+                    try:
+                        ElementFinder.find_next_page_button(self.browser_driver).click()
+                        WebDriverWait(self.browser_driver, 10).until(
+                            lambda d: ElementFinder.find_search_result_analysis_image(d))
+                    except TimeoutException as e:
+                        get_logger().info(f"retry: {i+1}")
+                        time.sleep(1)
+                        continue
+                    else:
+                        break
+                else:
+                    if e:
+                        raise e
+            if sub_results:
+                results[tab_type] = sub_results
         return results
 
     def quit(self) -> None:
